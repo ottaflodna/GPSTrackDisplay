@@ -86,6 +86,10 @@ class MainWindow(QMainWindow):
         self.track_color_mode = "Plain"
         self.show_start_stop = True  # Default: show start/stop markers
         
+        # Track map state for preservation
+        self.map_center: Optional[List[float]] = None
+        self.map_zoom: Optional[int] = None
+        
         self.setup_ui()
         self.initialize_empty_map()
         
@@ -142,11 +146,6 @@ class MainWindow(QMainWindow):
         clear_btn.clicked.connect(self.clear_all)
         button_layout.addWidget(clear_btn)
         
-        update_btn = QPushButton("Update Map")
-        update_btn.setStyleSheet("padding: 8px; font-size: 12px; background-color: #4CAF50; color: white; font-weight: bold;")
-        update_btn.clicked.connect(self.update_map)
-        button_layout.addWidget(update_btn)
-        
         tracks_layout.addLayout(button_layout)
         
         # Set widget to dock
@@ -170,14 +169,9 @@ class MainWindow(QMainWindow):
         properties_widget.setLayout(properties_layout)
         
         # Base map selector
+        from viewer.map_viewer import MapViewer
         self.base_map_combo = QComboBox()
-        self.base_map_combo.addItems([
-            "OpenTopoMap",
-            "OpenStreetMap",
-            "Satellite",
-            "OpenCycleMap",
-            "SwissTopo"
-        ])
+        self.base_map_combo.addItems(MapViewer.AVAILABLE_BASE_MAPS)
         self.base_map_combo.setCurrentText(self.base_map)
         self.base_map_combo.currentTextChanged.connect(self.on_base_map_changed)
         properties_layout.addRow("Base map:", self.base_map_combo)
@@ -206,6 +200,11 @@ class MainWindow(QMainWindow):
         """Handle base map selection change"""
         self.base_map = value
         self.statusBar().showMessage(f"Base map set to: {value}")
+        # Auto-regenerate map with new base layer (preserve zoom/center)
+        if self.tracks:
+            self.regenerate_map(fit_bounds=False)
+        else:
+            self.initialize_empty_map()
     
     def on_track_color_changed(self, value: str):
         """Handle track color mode change"""
@@ -216,9 +215,9 @@ class MainWindow(QMainWindow):
         """Handle show start/stop checkbox change"""
         self.show_start_stop = (state == Qt.Checked)
         self.statusBar().showMessage(f"Start/stop markers: {'On' if self.show_start_stop else 'Off'}")
-        # Auto-update map when option changes
+        # Auto-regenerate map when option changes (preserve zoom/center)
         if self.tracks:
-            self.update_map()
+            self.regenerate_map(fit_bounds=False)
     
     def setup_map_central_widget(self):
         """Setup the map display as central widget"""
@@ -229,12 +228,6 @@ class MainWindow(QMainWindow):
         # Web view for map
         self.map_view = QWebEngineView()
         map_layout.addWidget(self.map_view)
-        
-        # Refresh button
-        refresh_btn = QPushButton("Refresh Map")
-        refresh_btn.setStyleSheet("padding: 8px; font-size: 12px;")
-        refresh_btn.clicked.connect(self.refresh_map)
-        map_layout.addWidget(refresh_btn)
         
         # Set as central widget
         self.setCentralWidget(central_widget)
@@ -282,8 +275,8 @@ class MainWindow(QMainWindow):
         
         if added_count > 0:
             self.statusBar().showMessage(f"Added {added_count} track(s). Total: {len(self.tracks)}")
-            # Auto-update map
-            self.update_map()
+            # Auto-regenerate map with zoom recalculation
+            self.regenerate_map(fit_bounds=True)
         else:
             self.statusBar().showMessage("No tracks added")
     
@@ -320,25 +313,16 @@ class MainWindow(QMainWindow):
                     break
             
             self.statusBar().showMessage(f"Removed track. Total: {len(self.tracks)}")
-            # Auto-update map
-            if self.tracks:
-                self.update_map()
-            else:
-                self.initialize_empty_map()
+            # Auto-regenerate map with zoom recalculation
+            self.regenerate_map(fit_bounds=True)
     
     def load_map_in_view(self, map_file: str):
         """Load the map HTML file in the web view"""
         if os.path.exists(map_file):
             url = QUrl.fromLocalFile(os.path.abspath(map_file))
             self.map_view.setUrl(url)
-    
-    def refresh_map(self):
-        """Refresh the current map"""
-        if self.current_map_file:
-            self.load_map_in_view(self.current_map_file)
-            self.statusBar().showMessage("Map refreshed", 2000)
-        else:
-            self.update_map()
+            # Force reload to bypass cache
+            self.map_view.reload()
     
     def clear_all(self):
         """Clear all tracks"""
@@ -360,9 +344,10 @@ class MainWindow(QMainWindow):
             self.initialize_empty_map()
     
     def on_track_properties_changed(self):
-        """Handle track property changes"""
-        self.statusBar().showMessage("Track properties updated. Updating map...")
-        self.update_map()
+        """Handle track property changes (name, color, width)"""
+        self.statusBar().showMessage("Track properties updated. Regenerating map...")
+        # Preserve zoom/center when only properties change
+        self.regenerate_map(fit_bounds=False)
     
     def initialize_empty_map(self):
         """Initialize an empty map centered on Lausanne"""
@@ -386,37 +371,62 @@ class MainWindow(QMainWindow):
         # Load in view
         self.load_map_in_view(map_file)
     
-    def update_map(self):
-        """Update the map with current tracks"""
+    def regenerate_map(self, fit_bounds: bool = False):
+        """Regenerate the map with current track data and settings
+        
+        Args:
+            fit_bounds: If True, recalculates zoom to fit all tracks (used when adding tracks)
+        """
         try:
             from viewer.map_viewer import MapViewer
-            import folium
             
-            self.statusBar().showMessage("Updating map...")
+            self.statusBar().showMessage("Generating map...")
             
             if not self.tracks:
                 # No tracks - show empty Lausanne map
                 self.initialize_empty_map()
-                self.statusBar().showMessage("Map reset to Lausanne (no tracks)")
+                self.map_center = None
+                self.map_zoom = None
+                self.statusBar().showMessage("Map reset (no tracks)")
             else:
-                # Generate map with tracks
+                # Extract current map state if not fitting bounds and first time
+                if not fit_bounds and self.map_center is None:
+                    # First time - calculate from tracks
+                    viewer = MapViewer()
+                    self.map_center = viewer._calculate_center(self.tracks)
+                    self.map_zoom = 13
+                
+                # Generate map with current tracks and settings
                 viewer = MapViewer()
-                map_file = viewer.create_map(
-                    self.tracks, 
-                    show_start_stop=self.show_start_stop,
-                    base_map=self.base_map
-                )
+                
+                # Pass current center/zoom if not fitting bounds
+                kwargs = {
+                    'show_start_stop': self.show_start_stop,
+                    'base_map': self.base_map,
+                    'fit_bounds': fit_bounds
+                }
+                
+                if not fit_bounds:
+                    kwargs['current_center'] = self.map_center
+                    kwargs['current_zoom'] = self.map_zoom
+                
+                map_file = viewer.create_map(self.tracks, **kwargs)
                 self.current_map_file = map_file
                 
-                # Load map in web view and force reload to bypass cache
-                self.load_map_in_view(map_file)
-                self.map_view.reload()
+                # Update stored center/zoom only when fitting bounds
+                if fit_bounds:
+                    self.map_center = viewer._calculate_center(self.tracks)
+                    self.map_zoom = 13  # Default zoom when fitting
                 
-                self.statusBar().showMessage(f"Map updated with {len(self.tracks)} track(s)")
+                # Load map in web view
+                self.load_map_in_view(map_file)
+                
+                zoom_msg = " (zoom adjusted)" if fit_bounds else " (view preserved)"
+                self.statusBar().showMessage(f"Map generated with {len(self.tracks)} track(s){zoom_msg}")
             
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error updating map:\n{str(e)}")
-            self.statusBar().showMessage("Error updating map")
+            QMessageBox.critical(self, "Error", f"Error generating map:\n{str(e)}")
+            self.statusBar().showMessage("Error generating map")
     
     def set_initial_tracks(self, tracks: List[Track]):
         """Set initial tracks (called from main.py)"""
@@ -435,8 +445,8 @@ class MainWindow(QMainWindow):
             
             self.add_track_to_list(track)
         
-        # Auto-update map with initial tracks
+        # Auto-regenerate map with initial tracks (with zoom fit)
         if self.tracks:
-            self.update_map()
+            self.regenerate_map(fit_bounds=True)
         
         self.statusBar().showMessage(f"Loaded {len(self.tracks)} track(s)")

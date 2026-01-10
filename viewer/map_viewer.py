@@ -12,6 +12,14 @@ from models.track import Track
 class MapViewer:
     """Create and display interactive maps with GPS tracks"""
     
+    # Available base map options
+    AVAILABLE_BASE_MAPS = [
+        'OpenTopoMap',
+        'Satellite',
+        'OpenCycleMap',
+        'SwissTopo'
+    ]
+    
     # Extended color palette for multiple tracks (20 colors)
     COLORS = [
         '#FF0000',  # Red
@@ -37,7 +45,9 @@ class MapViewer:
     ]
     
     def create_map(self, tracks: List[Track], output_file: str = 'track_map.html', 
-                   show_start_stop: bool = True, base_map: str = 'OpenTopoMap') -> str:
+                   show_start_stop: bool = True, base_map: str = 'OpenTopoMap',
+                   fit_bounds: bool = False, current_center: List[float] = None,
+                   current_zoom: int = None) -> str:
         """
         Create an interactive map with all tracks
         
@@ -45,7 +55,10 @@ class MapViewer:
             tracks: List of Track objects to display
             output_file: Output HTML filename
             show_start_stop: Whether to show start/stop markers
-            base_map: Base map type ('OpenTopoMap', 'OpenStreetMap', 'Satellite', 'OpenCycleMap', 'SwissTopo')
+            base_map: Base map type ('OpenTopoMap', 'Satellite', 'OpenCycleMap', 'SwissTopo')
+            fit_bounds: Whether to automatically adjust zoom to fit all tracks
+            current_center: Current map center to preserve (if not fitting bounds)
+            current_zoom: Current zoom level to preserve (if not fitting bounds)
             
         Returns:
             Path to the generated HTML file
@@ -53,17 +66,30 @@ class MapViewer:
         if not tracks:
             raise ValueError("No tracks provided")
         
-        # Calculate center point from all tracks
-        center = self._calculate_center(tracks)
+        # Use provided center/zoom or calculate from tracks
+        if fit_bounds or current_center is None:
+            center = self._calculate_center(tracks)
+        else:
+            center = current_center
+        
+        if current_zoom is None:
+            zoom = 13
+        else:
+            zoom = current_zoom
         
         # Create map with selected base layer
-        m = self._create_base_map(center, base_map)
+        m = self._create_base_map(center, base_map, zoom)
         
         # Add each track with a different color
         for idx, track in enumerate(tracks):
             color = self.COLORS[idx % len(self.COLORS)]
             track.color = color
             self._add_track_to_map(m, track, color, show_start_stop)
+        
+        # Fit bounds to encompass all tracks if requested
+        if fit_bounds:
+            bounds = self._calculate_bounds(tracks)
+            m.fit_bounds(bounds, padding=[50, 50])
         
         # Save map
         m.save(output_file)
@@ -85,21 +111,26 @@ class MapViewer:
         
         return [center_lat, center_lng]
     
-    def _create_base_map(self, center: List[float], base_map: str) -> folium.Map:
+    def _calculate_bounds(self, tracks: List[Track]) -> List[List[float]]:
+        """Calculate bounding box encompassing all tracks"""
+        all_lats = []
+        all_lngs = []
+        
+        for track in tracks:
+            for point in track.points:
+                all_lats.append(point.latitude)
+                all_lngs.append(point.longitude)
+        
+        # Return [[min_lat, min_lng], [max_lat, max_lng]]
+        return [[min(all_lats), min(all_lngs)], [max(all_lats), max(all_lngs)]]
+    
+    def _create_base_map(self, center: List[float], base_map: str, zoom: int = 13) -> folium.Map:
         """Create a folium map with the specified base layer"""
         
-        if base_map == 'OpenStreetMap':
+        if base_map == 'Satellite':
             m = folium.Map(
                 location=center,
-                zoom_start=13,
-                tiles='OpenStreetMap',
-                attr='© OpenStreetMap contributors'
-            )
-        
-        elif base_map == 'Satellite':
-            m = folium.Map(
-                location=center,
-                zoom_start=13,
+                zoom_start=zoom,
                 tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
                 attr='Esri',
                 name='Satellite'
@@ -108,10 +139,10 @@ class MapViewer:
         elif base_map == 'OpenCycleMap':
             # Note: OpenCycleMap requires an API key from Thunderforest
             # You can get one free at https://www.thunderforest.com/docs/apikeys/
-            api_key = 'YOUR_API_KEY_HERE'  # Replace with your API key
+            api_key = 'cc077151fbf641f79c9c42eeebf1a2d9'  # Replace with your API key
             m = folium.Map(
                 location=center,
-                zoom_start=13,
+                zoom_start=zoom,
                 tiles=f'https://tile.thunderforest.com/cycle/{{z}}/{{x}}/{{y}}.png?apikey={api_key}',
                 attr='Maps © Thunderforest, Data © OpenStreetMap contributors',
                 name='OpenCycleMap'
@@ -120,7 +151,7 @@ class MapViewer:
         elif base_map == 'SwissTopo':
             m = folium.Map(
                 location=center,
-                zoom_start=13,
+                zoom_start=zoom,
                 tiles='https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg',
                 attr='© swisstopo',
                 name='SwissTopo'
@@ -129,7 +160,7 @@ class MapViewer:
         else:  # Default to OpenTopoMap
             m = folium.Map(
                 location=center,
-                zoom_start=13,
+                zoom_start=zoom,
                 tiles='OpenTopoMap',
                 attr='Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap'
             )
