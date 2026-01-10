@@ -39,7 +39,34 @@ class IGCParser:
                     if point:
                         track.add_point(point)
         
+        # Calculate vertical speeds
+        self._calculate_vertical_speeds(track)
+        
+        # Calculate speed if not present
+        track.calculate_speed()
+        
+        # Apply window averaging for power and vertical speed
+        track.apply_window_averaging()
+        
         return track
+    
+    def _calculate_vertical_speeds(self, track: Track):
+        """Calculate vertical speed between consecutive points"""
+        for i in range(1, len(track.points)):
+            p1 = track.points[i - 1]
+            p2 = track.points[i]
+            
+            if p1.altitude is not None and p2.altitude is not None and \
+               p1.timestamp is not None and p2.timestamp is not None:
+                
+                # Calculate time difference in seconds
+                time_diff = (p2.timestamp - p1.timestamp).total_seconds()
+                
+                if time_diff > 0:
+                    # Calculate vertical speed in m/s and m/h
+                    alt_diff = p2.altitude - p1.altitude
+                    p2.vertical_speed_ms = alt_diff / time_diff
+                    p2.vertical_speed_mh = p2.vertical_speed_ms * 3600
     
     def _parse_date(self, line: str) -> date:
         """Parse date from HFDTE record"""
@@ -98,7 +125,10 @@ class IGCParser:
             if lon_dir == 'W':
                 longitude = -longitude
             
-            # Altitude: GGGGG (GPS altitude)
+            # Pressure altitude: PPPPP
+            pressure_alt = int(line[25:30])
+            
+            # GPS altitude: GGGGG
             gps_alt = int(line[30:35])
             
             # Create timestamp if we have the date
@@ -114,6 +144,7 @@ class IGCParser:
                 latitude=latitude,
                 longitude=longitude,
                 altitude=gps_alt,
+                pressure_altitude=pressure_alt,
                 timestamp=timestamp
             )
         
