@@ -323,17 +323,10 @@ class MainWindow(QMainWindow):
         # Create empty map
         m = folium.Map(
             location=lausanne_coords,
-            zoom_start=13,
+            zoom_start=9,
             tiles='OpenTopoMap',
             attr='Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap'
         )
-        
-        # Add marker for Lausanne
-        folium.Marker(
-            location=lausanne_coords,
-            popup="Lausanne, Switzerland",
-            icon=folium.Icon(color='blue', icon='info-sign')
-        ).add_to(m)
         
         # Save map
         map_file = os.path.abspath('track_map.html')

@@ -1,4 +1,2 @@
 track_map.html
-ui/__pycache__/__init__.cpython-312.pyc
-ui/__pycache__/main_window.cpython-312.pyc
-viewer/__pycache__/map_viewer.cpython-312.pyc
+*.cpython-312.pyc
