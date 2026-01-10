@@ -57,9 +57,6 @@ class MapViewer:
             track.color = color
             self._add_track_to_map(m, track, color)
         
-        # Add legend
-        self._add_legend(m, tracks)
-        
         # Save map
         m.save(output_file)
         
@@ -88,11 +85,14 @@ class MapViewer:
         # Convert points to [lat, lng] format
         locations = [point.to_latlng() for point in track.points]
         
+        # Get line width (default to 3 if not set)
+        line_width = getattr(track, 'line_width', 3)
+        
         # Add track line
         folium.PolyLine(
             locations=locations,
             color=color,
-            weight=3,
+            weight=line_width,
             opacity=0.7,
             popup=self._create_popup_text(track)
         ).add_to(m)
