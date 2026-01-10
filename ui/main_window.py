@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QListWidget, QListWidgetItem, 
                              QLabel, QLineEdit, QSpinBox, QColorDialog,
                              QGroupBox, QFormLayout, QMessageBox, QDockWidget,
-                             QComboBox, QCheckBox)
+                             QComboBox, QCheckBox, QApplication, QDoubleSpinBox)
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import Qt, pyqtSignal, QUrl
 from PyQt5.QtGui import QColor
@@ -85,6 +85,9 @@ class MainWindow(QMainWindow):
         self.base_map = "OpenTopoMap"
         self.track_color_mode = "Plain"
         self.show_start_stop = True  # Default: show start/stop markers
+        self.show_legend = False  # Default: don't show legend
+        self.color_min: Optional[float] = None  # Min value for color scale
+        self.color_max: Optional[float] = None  # Max value for color scale
         
         # Track map state for preservation
         self.map_center: Optional[List[float]] = None
@@ -178,7 +181,17 @@ class MainWindow(QMainWindow):
         
         # Track color mode selector
         self.track_color_combo = QComboBox()
-        self.track_color_combo.addItems(["Plain"])
+        self.track_color_combo.addItems([
+            "Plain",
+            "Altitude (m)",
+            "Vertical Speed (m/s)",
+            "Vertical Speed (m/h)",
+            "Power (W)",
+            "Heart Rate (bpm)",
+            "Cadence (rpm)",
+            'Speed (km/h)',
+            'Temperature (°C)'
+        ])
         self.track_color_combo.setCurrentText(self.track_color_mode)
         self.track_color_combo.currentTextChanged.connect(self.on_track_color_changed)
         properties_layout.addRow("Track color:", self.track_color_combo)
@@ -188,6 +201,27 @@ class MainWindow(QMainWindow):
         self.show_start_stop_checkbox.setChecked(self.show_start_stop)
         self.show_start_stop_checkbox.stateChanged.connect(self.on_show_start_stop_changed)
         properties_layout.addRow("Show start and stop:", self.show_start_stop_checkbox)
+        
+        # Show legend checkbox
+        self.show_legend_checkbox = QCheckBox()
+        self.show_legend_checkbox.setChecked(self.show_legend)
+        self.show_legend_checkbox.stateChanged.connect(self.on_show_legend_changed)
+        properties_layout.addRow("Show legend:", self.show_legend_checkbox)
+        
+        # Color scale min/max inputs
+        self.color_min_spinbox = QDoubleSpinBox()
+        self.color_min_spinbox.setRange(-999999, 999999)
+        self.color_min_spinbox.setDecimals(2)
+        self.color_min_spinbox.setEnabled(False)
+        self.color_min_spinbox.editingFinished.connect(self.on_color_min_changed)
+        properties_layout.addRow("Color min:", self.color_min_spinbox)
+        
+        self.color_max_spinbox = QDoubleSpinBox()
+        self.color_max_spinbox.setRange(-999999, 999999)
+        self.color_max_spinbox.setDecimals(2)
+        self.color_max_spinbox.setEnabled(False)
+        self.color_max_spinbox.editingFinished.connect(self.on_color_max_changed)
+        properties_layout.addRow("Color max:", self.color_max_spinbox)
         
         # Set widget to dock
         properties_dock.setWidget(properties_widget)
@@ -209,12 +243,64 @@ class MainWindow(QMainWindow):
     def on_track_color_changed(self, value: str):
         """Handle track color mode change"""
         self.track_color_mode = value
+        
+        # Compute min/max values for the selected color mode
+        if value != "Plain" and self.tracks:
+            from viewer.map_viewer import MapViewer
+            viewer = MapViewer()
+            computed_min, computed_max = viewer._get_value_range(self.tracks, value)
+            self.color_min = computed_min
+            self.color_max = computed_max
+            
+            # Update spinboxes
+            self.color_min_spinbox.blockSignals(True)
+            self.color_max_spinbox.blockSignals(True)
+            self.color_min_spinbox.setValue(computed_min)
+            self.color_max_spinbox.setValue(computed_max)
+            self.color_min_spinbox.blockSignals(False)
+            self.color_max_spinbox.blockSignals(False)
+            
+            # Enable spinboxes for manual adjustment
+            self.color_min_spinbox.setEnabled(True)
+            self.color_max_spinbox.setEnabled(True)
+        else:
+            # Disable spinboxes for Plain mode
+            self.color_min = None
+            self.color_max = None
+            self.color_min_spinbox.setEnabled(False)
+            self.color_max_spinbox.setEnabled(False)
+        
         self.statusBar().showMessage(f"Track color mode set to: {value}")
+        # Auto-regenerate map when option changes (preserve zoom/center)
+        if self.tracks:
+            self.regenerate_map(fit_bounds=False)
+    
+    def on_color_min_changed(self):
+        """Handle color min value change"""
+        self.color_min = self.color_min_spinbox.value()
+        self.statusBar().showMessage(f"Color min set to: {self.color_min:.2f}")
+        if self.tracks:
+            self.regenerate_map(fit_bounds=False)
+    
+    def on_color_max_changed(self):
+        """Handle color max value change"""
+        self.color_max = self.color_max_spinbox.value()
+        self.statusBar().showMessage(f"Color max set to: {self.color_max:.2f}")
+        if self.tracks:
+            self.regenerate_map(fit_bounds=False)
     
     def on_show_start_stop_changed(self, state: int):
         """Handle show start/stop checkbox change"""
         self.show_start_stop = (state == Qt.Checked)
         self.statusBar().showMessage(f"Start/stop markers: {'On' if self.show_start_stop else 'Off'}")
+        # Auto-regenerate map when option changes (preserve zoom/center)
+        if self.tracks:
+            self.regenerate_map(fit_bounds=False)
+    
+    def on_show_legend_changed(self, state: int):
+        """Handle show legend checkbox change"""
+        self.show_legend = (state == Qt.Checked)
+        self.statusBar().showMessage(f"Legend: {'On' if self.show_legend else 'Off'}")
         # Auto-regenerate map when option changes (preserve zoom/center)
         if self.tracks:
             self.regenerate_map(fit_bounds=False)
@@ -244,11 +330,19 @@ class MainWindow(QMainWindow):
         if not file_paths:
             return
         
+        # Show loading message
+        self.statusBar().showMessage(f"Loading {len(file_paths)} track(s)...")
+        QApplication.processEvents()  # Force UI update
+        
         gpx_parser = GPXParser()
         igc_parser = IGCParser()
         added_count = 0
         
-        for file_path in file_paths:
+        for i, file_path in enumerate(file_paths):
+            # Update progress message
+            self.statusBar().showMessage(f"Loading track {i+1}/{len(file_paths)}: {os.path.basename(file_path)}")
+            QApplication.processEvents()  # Force UI update
+            
             try:
                 if file_path.lower().endswith('.gpx'):
                     track = gpx_parser.parse(file_path)
@@ -274,7 +368,8 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Error", f"Error loading {file_path}:\n{str(e)}")
         
         if added_count > 0:
-            self.statusBar().showMessage(f"Added {added_count} track(s). Total: {len(self.tracks)}")
+            self.statusBar().showMessage(f"Added {added_count} track(s). Total: {len(self.tracks)}. Generating map...")
+            QApplication.processEvents()  # Force UI update
             # Auto-regenerate map with zoom recalculation
             self.regenerate_map(fit_bounds=True)
         else:
@@ -403,7 +498,11 @@ class MainWindow(QMainWindow):
                 kwargs = {
                     'show_start_stop': self.show_start_stop,
                     'base_map': self.base_map,
-                    'fit_bounds': fit_bounds
+                    'fit_bounds': fit_bounds,
+                    'color_mode': self.track_color_mode,
+                    'show_legend': self.show_legend,
+                    'color_min': self.color_min,
+                    'color_max': self.color_max
                 }
                 
                 if not fit_bounds:

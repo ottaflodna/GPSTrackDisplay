@@ -15,9 +15,6 @@ def main():
     
     # Import after setting the attribute
     from ui.main_window import MainWindow
-    from ui.file_selector import FileSelector
-    from parsers.gpx_parser import GPXParser
-    from parsers.igc_parser import IGCParser
     
     app = QApplication(sys.argv)
     app.setStyle('Fusion')  # Modern look
