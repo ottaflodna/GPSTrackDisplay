@@ -36,7 +36,8 @@ class MapViewer:
         '#8B4513',  # Saddle Brown
     ]
     
-    def create_map(self, tracks: List[Track], output_file: str = 'track_map.html', show_start_stop: bool = True) -> str:
+    def create_map(self, tracks: List[Track], output_file: str = 'track_map.html', 
+                   show_start_stop: bool = True, base_map: str = 'OpenTopoMap') -> str:
         """
         Create an interactive map with all tracks
         
@@ -44,6 +45,7 @@ class MapViewer:
             tracks: List of Track objects to display
             output_file: Output HTML filename
             show_start_stop: Whether to show start/stop markers
+            base_map: Base map type ('OpenTopoMap', 'OpenStreetMap', 'Satellite', 'OpenCycleMap', 'SwissTopo')
             
         Returns:
             Path to the generated HTML file
@@ -54,13 +56,8 @@ class MapViewer:
         # Calculate center point from all tracks
         center = self._calculate_center(tracks)
         
-        # Create map with OpenTopoMap
-        m = folium.Map(
-            location=center,
-            zoom_start=13,
-            tiles='OpenTopoMap',
-            attr='Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap'
-        )
+        # Create map with selected base layer
+        m = self._create_base_map(center, base_map)
         
         # Add each track with a different color
         for idx, track in enumerate(tracks):
@@ -87,6 +84,57 @@ class MapViewer:
         center_lng = sum(all_lngs) / len(all_lngs)
         
         return [center_lat, center_lng]
+    
+    def _create_base_map(self, center: List[float], base_map: str) -> folium.Map:
+        """Create a folium map with the specified base layer"""
+        
+        if base_map == 'OpenStreetMap':
+            m = folium.Map(
+                location=center,
+                zoom_start=13,
+                tiles='OpenStreetMap',
+                attr='© OpenStreetMap contributors'
+            )
+        
+        elif base_map == 'Satellite':
+            m = folium.Map(
+                location=center,
+                zoom_start=13,
+                tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                attr='Esri',
+                name='Satellite'
+            )
+        
+        elif base_map == 'OpenCycleMap':
+            # Note: OpenCycleMap requires an API key from Thunderforest
+            # You can get one free at https://www.thunderforest.com/docs/apikeys/
+            api_key = 'YOUR_API_KEY_HERE'  # Replace with your API key
+            m = folium.Map(
+                location=center,
+                zoom_start=13,
+                tiles=f'https://tile.thunderforest.com/cycle/{{z}}/{{x}}/{{y}}.png?apikey={api_key}',
+                attr='Maps © Thunderforest, Data © OpenStreetMap contributors',
+                name='OpenCycleMap'
+            )
+        
+        elif base_map == 'SwissTopo':
+            m = folium.Map(
+                location=center,
+                zoom_start=13,
+                tiles='https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg',
+                attr='© swisstopo',
+                name='SwissTopo'
+            )
+        
+        else:  # Default to OpenTopoMap
+            m = folium.Map(
+                location=center,
+                zoom_start=13,
+                tiles='OpenTopoMap',
+                attr='Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap'
+            )
+        
+        return m
     
     def _add_track_to_map(self, m: folium.Map, track: Track, color: str, show_start_stop: bool = True):
         """Add a single track to the map"""

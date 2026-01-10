@@ -82,7 +82,7 @@ class MainWindow(QMainWindow):
         self.current_map_file: Optional[str] = None
         
         # Map properties
-        self.base_map = "Opentopomap"
+        self.base_map = "OpenTopoMap"
         self.track_color_mode = "Plain"
         self.show_start_stop = True  # Default: show start/stop markers
         
@@ -171,7 +171,13 @@ class MainWindow(QMainWindow):
         
         # Base map selector
         self.base_map_combo = QComboBox()
-        self.base_map_combo.addItems(["Opentopomap"])
+        self.base_map_combo.addItems([
+            "OpenTopoMap",
+            "OpenStreetMap",
+            "Satellite",
+            "OpenCycleMap",
+            "SwissTopo"
+        ])
         self.base_map_combo.setCurrentText(self.base_map)
         self.base_map_combo.currentTextChanged.connect(self.on_base_map_changed)
         properties_layout.addRow("Base map:", self.base_map_combo)
@@ -361,17 +367,16 @@ class MainWindow(QMainWindow):
     def initialize_empty_map(self):
         """Initialize an empty map centered on Lausanne"""
         import folium
+        from viewer.map_viewer import MapViewer
         
         # Lausanne coordinates
         lausanne_coords = [46.5197, 6.6323]
         
-        # Create empty map
-        m = folium.Map(
-            location=lausanne_coords,
-            zoom_start=9,
-            tiles='OpenTopoMap',
-            attr='Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap'
-        )
+        # Create map viewer instance
+        viewer = MapViewer()
+        
+        # Create empty map with selected base layer
+        m = viewer._create_base_map(lausanne_coords, self.base_map)
         
         # Save map
         map_file = os.path.abspath('track_map.html')
@@ -396,7 +401,11 @@ class MainWindow(QMainWindow):
             else:
                 # Generate map with tracks
                 viewer = MapViewer()
-                map_file = viewer.create_map(self.tracks, show_start_stop=self.show_start_stop)
+                map_file = viewer.create_map(
+                    self.tracks, 
+                    show_start_stop=self.show_start_stop,
+                    base_map=self.base_map
+                )
                 self.current_map_file = map_file
                 
                 # Load map in web view and force reload to bypass cache
