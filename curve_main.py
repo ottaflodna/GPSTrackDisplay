@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-GPS Tracklog Map Viewer - Refactored Application Entry Point
-Uses the new refactored architecture with reusable components
+GPS Tracklog Curve Viewer - Application Entry Point
+Demonstrates the new curve viewer using refactored architecture
 """
 
 import sys
@@ -10,18 +10,18 @@ from PyQt5.QtCore import Qt
 
 
 def main():
-    """Main application entry point for the map viewer"""
+    """Main application entry point for the curve viewer"""
     # Required for QtWebEngineWidgets - MUST be set before any imports that use it
     QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
     
     # Import after setting the attribute
-    from apps.map_app import MapWindow
+    from apps.curve_app import CurveWindow
     
     app = QApplication(sys.argv)
     app.setStyle('Fusion')  # Modern look
     
     # Create and show main window
-    window = MapWindow()
+    window = CurveWindow()
     window.showMaximized()
     
     # Run application

@@ -1,15 +1,16 @@
 """
-Map viewer using Folium with OpenTopoMap base layer
+Map viewer using Folium - Refactored to inherit from BaseViewer
 """
 
 import folium
 import os
 import webbrowser
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from models.track import Track
+from viewer.base_viewer import BaseViewer
 
 
-class MapViewer:
+class MapViewer(BaseViewer):
     """Create and display interactive maps with GPS tracks"""
     
     # Available base map options
@@ -18,6 +19,19 @@ class MapViewer:
         'Satellite',
         'OpenCycleMap',
         'SwissTopo'
+    ]
+    
+    # Color modes available
+    COLOR_MODES = [
+        "Plain",
+        "Altitude (m)",
+        "Vertical Speed (m/s)",
+        "Vertical Speed (m/h)",
+        "Power (W)",
+        "Heart Rate (bpm)",
+        "Cadence (rpm)",
+        'Speed (km/h)',
+        'Temperature (°C)'
     ]
     
     # Extended color palette for multiple tracks (20 colors)
@@ -44,31 +58,81 @@ class MapViewer:
         '#E63946',  # Imperial Red
     ]
     
-    def create_map(self, tracks: List[Track], output_file: str = 'track_map.html', 
-                   show_start_stop: bool = True, base_map: str = 'OpenTopoMap',
-                   fit_bounds: bool = False, current_center: List[float] = None,
-                   current_zoom: int = None, color_mode: str = 'Plain',
-                   show_legend: bool = False, color_min: Optional[float] = None,
-                   color_max: Optional[float] = None, zoom_control: bool = True) -> tuple:
+    def get_available_options(self) -> Dict[str, Any]:
+        """Get available configuration options for map viewer"""
+        return {
+            'base_map': {
+                'type': 'combo',
+                'values': self.AVAILABLE_BASE_MAPS,
+                'label': 'Base Map'
+            },
+            'color_mode': {
+                'type': 'combo',
+                'values': self.COLOR_MODES,
+                'label': 'Track Color'
+            },
+            'show_start_stop': {
+                'type': 'checkbox',
+                'label': 'Show Start/Stop Markers'
+            },
+            'show_legend': {
+                'type': 'checkbox',
+                'label': 'Show Legend'
+            },
+            'show_zoom_controls': {
+                'type': 'checkbox',
+                'label': 'Show Zoom Controls'
+            },
+            'color_min': {
+                'type': 'double_spin',
+                'label': 'Color Min',
+                'range': (-999999, 999999)
+            },
+            'color_max': {
+                'type': 'double_spin',
+                'label': 'Color Max',
+                'range': (-999999, 999999)
+            }
+        }
+    
+    def get_default_options(self) -> Dict[str, Any]:
+        """Get default values for all options"""
+        return {
+            'base_map': 'OpenTopoMap',
+            'color_mode': 'Plain',
+            'show_start_stop': False,
+            'show_legend': False,
+            'show_zoom_controls': False,
+            'color_min': None,
+            'color_max': None
+        }
+    
+    def create_view(self, tracks: List[Track], output_file: str = 'track_map.html', **kwargs) -> tuple:
         """
         Create an interactive map with all tracks
         
         Args:
             tracks: List of Track objects to display
             output_file: Output HTML filename
-            show_start_stop: Whether to show start/stop markers
-            base_map: Base map type ('OpenTopoMap', 'Satellite', 'OpenCycleMap', 'SwissTopo')
-            fit_bounds: Whether to automatically adjust zoom to fit all tracks
-            current_center: Current map center to preserve (if not fitting bounds)
-            current_zoom: Current zoom level to preserve (if not fitting bounds)
-            color_mode: How to color tracks ('Plain', 'Altitude', 'Vertical Speed (m/s)', etc.)
-            show_legend: Whether to show the legend
+            **kwargs: Map-specific options (see get_available_options)
             
         Returns:
-            Tuple of (file_path, center, zoom) - the path to HTML file and the view coordinates used
+            Tuple of (file_path, view_state_dict)
         """
         if not tracks:
             raise ValueError("No tracks provided")
+        
+        # Extract options with defaults
+        show_start_stop = kwargs.get('show_start_stop', False)
+        base_map = kwargs.get('base_map', 'OpenTopoMap')
+        fit_bounds = kwargs.get('fit_bounds', False)
+        current_center = kwargs.get('current_center', None)
+        current_zoom = kwargs.get('current_zoom', None)
+        color_mode = kwargs.get('color_mode', 'Plain')
+        show_legend = kwargs.get('show_legend', False)
+        color_min = kwargs.get('color_min', None)
+        color_max = kwargs.get('color_max', None)
+        zoom_control = kwargs.get('zoom_control', True)
         
         # Use provided center/zoom or calculate from tracks
         if fit_bounds or current_center is None:
@@ -110,7 +174,13 @@ class MapViewer:
         # Save map
         m.save(output_file)
         
-        return (os.path.abspath(output_file), center, zoom)
+        # Return file path and view state
+        view_state = {
+            'current_center': center,
+            'current_zoom': zoom
+        }
+        
+        return (os.path.abspath(output_file), view_state)
     
     def _calculate_center(self, tracks: List[Track]) -> List[float]:
         """Calculate center point of all tracks"""
@@ -155,7 +225,6 @@ class MapViewer:
         
         elif base_map == 'OpenCycleMap':
             # Note: OpenCycleMap requires an API key from Thunderforest
-            # You can get one free at https://www.thunderforest.com/docs/apikeys/
             api_key = 'cc077151fbf641f79c9c42eeebf1a2d9'  # Replace with your API key
             m = folium.Map(
                 location=center,
