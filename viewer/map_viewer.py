@@ -49,7 +49,7 @@ class MapViewer:
                    fit_bounds: bool = False, current_center: List[float] = None,
                    current_zoom: int = None, color_mode: str = 'Plain',
                    show_legend: bool = False, color_min: Optional[float] = None,
-                   color_max: Optional[float] = None, zoom_control: bool = True) -> str:
+                   color_max: Optional[float] = None, zoom_control: bool = True) -> tuple:
         """
         Create an interactive map with all tracks
         
@@ -65,7 +65,7 @@ class MapViewer:
             show_legend: Whether to show the legend
             
         Returns:
-            Path to the generated HTML file
+            Tuple of (file_path, center, zoom) - the path to HTML file and the view coordinates used
         """
         if not tracks:
             raise ValueError("No tracks provided")
@@ -110,7 +110,7 @@ class MapViewer:
         # Save map
         m.save(output_file)
         
-        return os.path.abspath(output_file)
+        return (os.path.abspath(output_file), center, zoom)
     
     def _calculate_center(self, tracks: List[Track]) -> List[float]:
         """Calculate center point of all tracks"""

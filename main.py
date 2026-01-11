@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 GPS Tracklog Viewer - Main Entry Point
-Supports GPX (bike and running) and IGC (paragliding) formats
+Supports TCX & GPX (bike and running) and IGC (paragliding) formats
 """
 
 import sys

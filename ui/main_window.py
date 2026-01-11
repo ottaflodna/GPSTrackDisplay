@@ -520,6 +520,64 @@ class MainWindow(QMainWindow):
         # Preserve zoom/center when only properties change
         self.regenerate_map(fit_bounds=False)
     
+    def _capture_current_view(self):
+        """Capture the current map center and zoom from the browser"""
+        from PyQt5.QtCore import QEventLoop
+        
+        # JavaScript to extract Leaflet map's current view
+        js_code = """
+        (function() {
+            try {
+                // Find the Leaflet map object
+                var map = null;
+                for (var key in window) {
+                    if (window[key] && window[key]._layers) {
+                        map = window[key];
+                        break;
+                    }
+                }
+                if (map) {
+                    var center = map.getCenter();
+                    var zoom = map.getZoom();
+                    return JSON.stringify({
+                        lat: center.lat,
+                        lng: center.lng,
+                        zoom: zoom
+                    });
+                }
+                return null;
+            } catch(e) {
+                return null;
+            }
+        })();
+        """
+        
+        # Use event loop to wait for JavaScript result
+        loop = QEventLoop()
+        result_holder = {'result': None}
+        
+        def handle_result(result):
+            result_holder['result'] = result
+            loop.quit()
+        
+        # Execute JavaScript
+        self.map_view.page().runJavaScript(js_code, handle_result)
+        
+        # Wait for result (max 200ms timeout)
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(200, loop.quit)
+        loop.exec_()
+        
+        # Parse result and update view settings
+        if result_holder['result']:
+            try:
+                import json
+                view_data = json.loads(result_holder['result'])
+                self.map_center = [view_data['lat'], view_data['lng']]
+                self.map_zoom = int(view_data['zoom'])
+            except:
+                pass  # Keep existing values if capture fails
+    
     def initialize_empty_map(self):
         """Initialize an empty map centered on Lausanne"""
         import folium
@@ -550,6 +608,10 @@ class MainWindow(QMainWindow):
         """
         try:
             from viewer.map_viewer import MapViewer
+            
+            # Capture current view settings from the browser before regenerating
+            if not fit_bounds and self.current_map_file and self.tracks:
+                self._capture_current_view()
             
             self.statusBar().showMessage("Generating map...")
             
@@ -586,13 +648,14 @@ class MainWindow(QMainWindow):
                     kwargs['current_center'] = self.map_center
                     kwargs['current_zoom'] = self.map_zoom
                 
-                map_file = viewer.create_map(self.tracks, **kwargs)
+                # create_map returns (file_path, center, zoom)
+                map_file, center, zoom = viewer.create_map(self.tracks, **kwargs)
                 self.current_map_file = map_file
                 
-                # Update stored center/zoom only when fitting bounds
-                if fit_bounds:
-                    self.map_center = viewer._calculate_center(self.tracks)
-                    self.map_zoom = 13  # Default zoom when fitting
+                # Always update stored center/zoom with the values actually used
+                # This preserves the view for subsequent setting changes
+                self.map_center = center
+                self.map_zoom = zoom
                 
                 # Load map in web view
                 self.load_map_in_view(map_file)
