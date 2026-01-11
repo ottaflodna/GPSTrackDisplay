@@ -22,26 +22,26 @@ class MapViewer:
     
     # Extended color palette for multiple tracks (20 colors)
     COLORS = [
-        '#FF0000',  # Red
-        '#0000FF',  # Blue
-        '#00FF00',  # Lime Green
-        '#FF00FF',  # Magenta
-        '#FFA500',  # Orange
-        '#00FFFF',  # Cyan
-        '#FFFF00',  # Yellow
-        '#800080',  # Purple
-        '#FFC0CB',  # Pink
-        '#A52A2A',  # Brown
-        '#FF6347',  # Tomato
-        '#4169E1',  # Royal Blue
-        '#32CD32',  # Lime
-        '#FF1493',  # Deep Pink
-        '#FF8C00',  # Dark Orange
-        '#00CED1',  # Dark Turquoise
-        '#FFD700',  # Gold
-        '#9370DB',  # Medium Purple
-        '#FF69B4',  # Hot Pink
-        '#8B4513',  # Saddle Brown
+        '#457B9D',  # Celadon Blue
+        '#2A9D8F',  # Persian Green
+        '#F4A261',  # Sandy Brown
+        '#E76F51',  # Burnt Sienna
+        '#264653',  # Charcoal
+        '#A8DADC',  # Powder Blue
+        '#F77F00',  # Orange (Pantone)
+        '#06FFA5',  # Spring Green
+        '#9B59B6',  # Amethyst
+        '#FF6B9D',  # Brink Pink
+        '#3498DB',  # Dodger Blue
+        '#F39C12',  # Orange
+        '#1ABC9C',  # Turquoise
+        '#E74C3C',  # Alizarin
+        '#95E1D3',  # Tiffany Blue
+        '#F38181',  # Light Coral
+        '#AA96DA',  # Lavender
+        '#FCBAD3',  # Cotton Candy
+        '#A8E6CF',  # Celadon
+        '#E63946',  # Imperial Red
     ]
     
     def create_map(self, tracks: List[Track], output_file: str = 'track_map.html', 
@@ -195,8 +195,8 @@ class MapViewer:
         # Convert points to [lat, lng] format
         locations = [point.to_latlng() for point in track.points]
         
-        # Get line width (default to 3 if not set)
-        line_width = getattr(track, 'line_width', 3)
+        # Get line width (default to 5 if not set)
+        line_width = getattr(track, 'line_width', 5)
         
         # Add track line
         folium.PolyLine(
