@@ -26,6 +26,7 @@ class MapWindow(BaseWindow):
         # Initialize map-specific properties before calling super().__init__()
         self.base_map = "OpenTopoMap"
         self.track_color_mode = "Plain"
+        self.colormap = "Jet (Blue-Green-Yellow-Red)"  # Default colormap
         self.show_start_stop = False
         self.show_legend = False
         self.show_zoom_controls = False
@@ -97,6 +98,14 @@ class MapWindow(BaseWindow):
         self.track_color_combo.setCurrentText(self.track_color_mode)
         self.track_color_combo.currentTextChanged.connect(self.on_track_color_changed)
         track_layout.addRow("Track color:", self.track_color_combo)
+        
+        # Colormap selector
+        self.colormap_combo = QComboBox()
+        self.colormap_combo.addItems(MapViewer.AVAILABLE_COLORMAPS)
+        self.colormap_combo.setCurrentText(self.colormap)
+        self.colormap_combo.setEnabled(False)  # Disabled by default (enabled when color mode is not Plain)
+        self.colormap_combo.currentTextChanged.connect(self.on_colormap_changed)
+        track_layout.addRow("Colormap:", self.colormap_combo)
         
         # Color scale min/max inputs
         self.color_min_spinbox = QDoubleSpinBox()
@@ -171,14 +180,16 @@ class MapWindow(BaseWindow):
             self.color_min_spinbox.blockSignals(False)
             self.color_max_spinbox.blockSignals(False)
             
-            # Enable spinboxes
+            # Enable spinboxes and colormap
             self.color_min_spinbox.setEnabled(True)
             self.color_max_spinbox.setEnabled(True)
+            self.colormap_combo.setEnabled(True)
         else:
             self.color_min = None
             self.color_max = None
             self.color_min_spinbox.setEnabled(False)
             self.color_max_spinbox.setEnabled(False)
+            self.colormap_combo.setEnabled(False)
         
         self.statusBar().showMessage(f"Track color mode set to: {value}")
         if self.tracks:
@@ -195,6 +206,13 @@ class MapWindow(BaseWindow):
         """Handle color max value change"""
         self.color_max = self.color_max_spinbox.value()
         self.statusBar().showMessage(f"Color max set to: {self.color_max:.2f}")
+        if self.tracks:
+            self.on_viewer_properties_changed(fit_bounds=False)
+    
+    def on_colormap_changed(self, value: str):
+        """Handle colormap selection change"""
+        self.colormap = value
+        self.statusBar().showMessage(f"Colormap set to: {value}")
         if self.tracks:
             self.on_viewer_properties_changed(fit_bounds=False)
     
@@ -234,6 +252,7 @@ class MapWindow(BaseWindow):
         return {
             'base_map': self.base_map,
             'color_mode': self.track_color_mode,
+            'colormap': self.colormap,
             'show_start_stop': self.show_start_stop,
             'show_legend': self.show_legend,
             'zoom_control': self.show_zoom_controls,

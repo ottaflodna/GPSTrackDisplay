@@ -58,6 +58,18 @@ class MapViewer(BaseViewer):
         '#E63946',  # Imperial Red
     ]
     
+    # Available colormaps for gradient visualization
+    AVAILABLE_COLORMAPS = [
+        'Jet (Blue-Green-Yellow-Red)',
+        'Viridis (Purple-Green-Yellow)',
+        'Plasma (Purple-Pink-Yellow)',
+        'Turbo (Blue-Cyan-Green-Yellow-Red)',
+        'Hot (Black-Red-Yellow-White)',
+        'Cool (Cyan-Magenta)',
+        'Rainbow (Red-Orange-Yellow-Green-Blue-Purple)',
+        'Red-White-Blue'
+    ]
+    
     def get_available_options(self) -> Dict[str, Any]:
         """Get available configuration options for map viewer"""
         return {
@@ -70,6 +82,11 @@ class MapViewer(BaseViewer):
                 'type': 'combo',
                 'values': self.COLOR_MODES,
                 'label': 'Track Color'
+            },
+            'colormap': {
+                'type': 'combo',
+                'values': self.AVAILABLE_COLORMAPS,
+                'label': 'Colormap'
             },
             'show_start_stop': {
                 'type': 'checkbox',
@@ -100,6 +117,7 @@ class MapViewer(BaseViewer):
         return {
             'base_map': 'OpenTopoMap',
             'color_mode': 'Plain',
+            'colormap': 'Jet (Blue-Green-Yellow-Red)',
             'show_start_stop': False,
             'show_legend': False,
             'show_zoom_controls': False,
@@ -129,6 +147,7 @@ class MapViewer(BaseViewer):
         current_center = kwargs.get('current_center', None)
         current_zoom = kwargs.get('current_zoom', None)
         color_mode = kwargs.get('color_mode', 'Plain')
+        colormap = kwargs.get('colormap', 'Jet (Blue-Green-Yellow-Red)')
         show_legend = kwargs.get('show_legend', False)
         color_min = kwargs.get('color_min', None)
         color_max = kwargs.get('color_max', None)
@@ -160,11 +179,11 @@ class MapViewer(BaseViewer):
             for idx, track in enumerate(tracks):
                 color = self.COLORS[idx % len(self.COLORS)]
                 track.color = color
-                self._add_colored_track_to_map(m, track, color, show_start_stop, color_mode, color_min, color_max)
+                self._add_colored_track_to_map(m, track, color, show_start_stop, color_mode, color_min, color_max, colormap)
         
         # Add legend if requested
         if show_legend:
-            self._add_legend(m, tracks, color_mode, color_min, color_max)
+            self._add_legend(m, tracks, color_mode, color_min, color_max, colormap)
         
         # Fit bounds to encompass all tracks if requested
         if fit_bounds:
@@ -307,7 +326,8 @@ class MapViewer(BaseViewer):
         return html
     
     def _add_legend(self, m: folium.Map, tracks: List[Track], color_mode: str = 'Plain',
-                    color_min: Optional[float] = None, color_max: Optional[float] = None):
+                    color_min: Optional[float] = None, color_max: Optional[float] = None,
+                    colormap: str = 'Jet (Blue-Green-Yellow-Red)'):
         """Add a legend showing track names and colors or color scale"""
         if color_mode == 'Plain':
             # Show track names and colors
@@ -344,6 +364,9 @@ class MapViewer(BaseViewer):
                 min_val, max_val = color_min, color_max
             else:
                 min_val, max_val = self._get_value_range(tracks, color_mode)
+            # Get CSS gradient for the selected colormap
+            gradient = self._get_css_gradient(colormap)
+            
             legend_html = f'''
             <div style="position: fixed; 
                         top: 10px; right: 10px; 
@@ -357,7 +380,7 @@ class MapViewer(BaseViewer):
                         box-shadow: 2px 2px 5px rgba(0,0,0,0.3);">
                 <h4 style="margin-top:0; margin-bottom:10px;">{color_mode}</h4>
                 <div style="display: flex; align-items: stretch;">
-                    <div style="background: linear-gradient(to top, #0000FF, #00FF00, #FFFF00, #FF0000); 
+                    <div style="background: {gradient}; 
                                 height: 150px; 
                                 width: 30px;"></div>
                     <div style="display: flex; 
@@ -378,7 +401,8 @@ class MapViewer(BaseViewer):
     def _add_colored_track_to_map(self, m: folium.Map, track: Track, base_color: str, 
                                    show_start_stop: bool, color_mode: str,
                                    color_min: Optional[float] = None,
-                                   color_max: Optional[float] = None):
+                                   color_max: Optional[float] = None,
+                                   colormap: str = 'Jet (Blue-Green-Yellow-Red)'):
         """Add a track to the map with gradient coloring based on attribute"""
         if len(track) == 0:
             return
@@ -413,8 +437,8 @@ class MapViewer(BaseViewer):
                 else:
                     normalized = 0.5
                 
-                # Get color from gradient (blue -> green -> yellow -> red)
-                color = self._value_to_color(normalized)
+                # Get color from gradient using selected colormap
+                color = self._value_to_color(normalized, colormap)
                 
                 # Add segment
                 locations = [track.points[i].to_latlng(), track.points[i + 1].to_latlng()]
@@ -476,29 +500,189 @@ class MapViewer(BaseViewer):
         
         return min(all_values), max(all_values)
     
-    def _value_to_color(self, normalized: float) -> str:
-        """Convert a normalized value (0-1) to a color (blue -> green -> yellow -> red)"""
+    def _get_css_gradient(self, colormap: str) -> str:
+        """Generate CSS gradient string based on colormap"""
+        gradients = {
+            'Jet (Blue-Green-Yellow-Red)': 'linear-gradient(to top, #0000FF, #00FF00, #FFFF00, #FF0000)',
+            'Viridis (Purple-Green-Yellow)': 'linear-gradient(to top, #440154, #3B528B, #21908C, #5DC863, #FDE725)',
+            'Plasma (Purple-Pink-Yellow)': 'linear-gradient(to top, #0D0887, #7E03A8, #CC4778, #F0923A, #FCFFA4)',
+            'Turbo (Blue-Cyan-Green-Yellow-Red)': 'linear-gradient(to top, #30123B, #209EEE, #3DE15D, #F8ED26, #7A0402)',
+            'Hot (Black-Red-Yellow-White)': 'linear-gradient(to top, #000000, #FF0000, #FFFF00, #FFFFFF)',
+            'Cool (Cyan-Magenta)': 'linear-gradient(to top, #00FFFF, #FF00FF)',
+            'Rainbow (Red-Orange-Yellow-Green-Blue-Purple)': 'linear-gradient(to top, #9400D3, #0000FF, #00FF00, #FFFF00, #FF7F00, #FF0000)',
+            'Red-White-Blue': 'linear-gradient(to top, #0000FF, #FFFFFF, #FF0000)'
+        }
+        
+        return gradients.get(colormap, gradients['Jet (Blue-Green-Yellow-Red)'])
+    
+    def _value_to_color(self, normalized: float, colormap: str = 'Jet (Blue-Green-Yellow-Red)') -> str:
+        """Convert a normalized value (0-1) to a color using the specified colormap"""
         # Clamp value
         normalized = max(0, min(1, normalized))
         
-        if normalized < 0.33:
-            # Blue to green
-            factor = normalized / 0.33
-            r = 0
-            g = int(255 * factor)
-            b = int(255 * (1 - factor))
-        elif normalized < 0.66:
-            # Green to yellow
-            factor = (normalized - 0.33) / 0.33
-            r = int(255 * factor)
-            g = 255
-            b = 0
-        else:
-            # Yellow to red
-            factor = (normalized - 0.66) / 0.34
-            r = 255
-            g = int(255 * (1 - factor))
-            b = 0
+        if colormap == 'Viridis (Purple-Green-Yellow)':
+            # Viridis colormap (approximation)
+            if normalized < 0.25:
+                factor = normalized / 0.25
+                r = int(68 + (59 - 68) * factor)
+                g = int(1 + (82 - 1) * factor)
+                b = int(84 + (139 - 84) * factor)
+            elif normalized < 0.5:
+                factor = (normalized - 0.25) / 0.25
+                r = int(59 + (33 - 59) * factor)
+                g = int(82 + (145 - 82) * factor)
+                b = int(139 + (140 - 139) * factor)
+            elif normalized < 0.75:
+                factor = (normalized - 0.5) / 0.25
+                r = int(33 + (94 - 33) * factor)
+                g = int(145 + (201 - 145) * factor)
+                b = int(140 + (98 - 140) * factor)
+            else:
+                factor = (normalized - 0.75) / 0.25
+                r = int(94 + (253 - 94) * factor)
+                g = int(201 + (231 - 201) * factor)
+                b = int(98 + (37 - 98) * factor)
+        
+        elif colormap == 'Plasma (Purple-Pink-Yellow)':
+            # Plasma colormap (approximation)
+            if normalized < 0.25:
+                factor = normalized / 0.25
+                r = int(13 + (126 - 13) * factor)
+                g = int(8 + (3 - 8) * factor)
+                b = int(135 + (167 - 135) * factor)
+            elif normalized < 0.5:
+                factor = (normalized - 0.25) / 0.25
+                r = int(126 + (204 - 126) * factor)
+                g = int(3 + (71 - 3) * factor)
+                b = int(167 + (120 - 167) * factor)
+            elif normalized < 0.75:
+                factor = (normalized - 0.5) / 0.25
+                r = int(204 + (240 - 204) * factor)
+                g = int(71 + (142 - 71) * factor)
+                b = int(120 + (53 - 120) * factor)
+            else:
+                factor = (normalized - 0.75) / 0.25
+                r = int(240 + (252 - 240) * factor)
+                g = int(142 + (255 - 142) * factor)
+                b = int(53 + (164 - 53) * factor)
+        
+        elif colormap == 'Turbo (Blue-Cyan-Green-Yellow-Red)':
+            # Turbo colormap (approximation)
+            if normalized < 0.2:
+                factor = normalized / 0.2
+                r = int(48 + (32 - 48) * factor)
+                g = int(18 + (156 - 18) * factor)
+                b = int(59 + (238 - 59) * factor)
+            elif normalized < 0.4:
+                factor = (normalized - 0.2) / 0.2
+                r = int(32 + (61 - 32) * factor)
+                g = int(156 + (225 - 156) * factor)
+                b = int(238 + (179 - 238) * factor)
+            elif normalized < 0.6:
+                factor = (normalized - 0.4) / 0.2
+                r = int(61 + (175 - 61) * factor)
+                g = int(225 + (240 - 225) * factor)
+                b = int(179 + (91 - 179) * factor)
+            elif normalized < 0.8:
+                factor = (normalized - 0.6) / 0.2
+                r = int(175 + (249 - 175) * factor)
+                g = int(240 + (142 - 240) * factor)
+                b = int(91 + (10 - 91) * factor)
+            else:
+                factor = (normalized - 0.8) / 0.2
+                r = int(249 + (122 - 249) * factor)
+                g = int(142 + (4 - 142) * factor)
+                b = int(10 + (2 - 10) * factor)
+        
+        elif colormap == 'Hot (Black-Red-Yellow-White)':
+            # Hot colormap
+            if normalized < 0.33:
+                factor = normalized / 0.33
+                r = int(255 * factor)
+                g = 0
+                b = 0
+            elif normalized < 0.66:
+                factor = (normalized - 0.33) / 0.33
+                r = 255
+                g = int(255 * factor)
+                b = 0
+            else:
+                factor = (normalized - 0.66) / 0.34
+                r = 255
+                g = 255
+                b = int(255 * factor)
+        
+        elif colormap == 'Cool (Cyan-Magenta)':
+            # Cool colormap
+            r = int(255 * normalized)
+            g = int(255 * (1 - normalized))
+            b = 255
+        
+        elif colormap == 'Rainbow (Red-Orange-Yellow-Green-Blue-Purple)':
+            # Rainbow colormap
+            if normalized < 0.17:
+                factor = normalized / 0.17
+                r = int(148 + (255 - 148) * factor)
+                g = int(0 + (127 - 0) * factor)
+                b = 211
+            elif normalized < 0.33:
+                factor = (normalized - 0.17) / 0.16
+                r = 255
+                g = int(127 + (255 - 127) * factor)
+                b = int(211 + (0 - 211) * factor)
+            elif normalized < 0.5:
+                factor = (normalized - 0.33) / 0.17
+                r = int(255 + (0 - 255) * factor)
+                g = 255
+                b = 0
+            elif normalized < 0.67:
+                factor = (normalized - 0.5) / 0.17
+                r = 0
+                g = int(255 + (0 - 255) * factor)
+                b = int(0 + (255 - 0) * factor)
+            elif normalized < 0.83:
+                factor = (normalized - 0.67) / 0.16
+                r = int(0 + (75 - 0) * factor)
+                g = 0
+                b = 255
+            else:
+                factor = (normalized - 0.83) / 0.17
+                r = int(75 + (148 - 75) * factor)
+                g = 0
+                b = 211
+        
+        elif colormap == 'Red-White-Blue':
+            # Red-White-Blue diverging colormap
+            if normalized < 0.5:
+                factor = normalized / 0.5
+                r = 255
+                g = int(255 * factor)
+                b = int(255 * factor)
+            else:
+                factor = (normalized - 0.5) / 0.5
+                r = int(255 * (1 - factor))
+                g = int(255 * (1 - factor))
+                b = 255
+        
+        else:  # Default: Jet (Blue-Green-Yellow-Red)
+            if normalized < 0.33:
+                # Blue to green
+                factor = normalized / 0.33
+                r = 0
+                g = int(255 * factor)
+                b = int(255 * (1 - factor))
+            elif normalized < 0.66:
+                # Green to yellow
+                factor = (normalized - 0.33) / 0.33
+                r = int(255 * factor)
+                g = 255
+                b = 0
+            else:
+                # Yellow to red
+                factor = (normalized - 0.66) / 0.34
+                r = 255
+                g = int(255 * (1 - factor))
+                b = 0
         
         return f'#{r:02x}{g:02x}{b:02x}'
     

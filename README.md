@@ -89,14 +89,12 @@ TrackDisplay/
 │   ├── base_window.py          # Abstract base window class
 │   ├── file_selector.py        # File selection dialog
 │   ├── track_manager_widget.py # Track list management
-│   ├── track_list_item.py      # Individual track item widget
-│   └── map_main_window.py      # Legacy map window
+│   └── track_list_item.py      # Individual track item widget
 │
 ├── viewer/                      # Visualization engines
 │   ├── base_viewer.py          # Abstract base viewer interface
 │   ├── map_viewer.py           # Folium-based map viewer
-│   ├── curve_viewer.py         # Plotly-based curve/chart viewer
-│   └── interactive_viewer.py   # Legacy interactive viewer
+│   └── curve_viewer.py         # Plotly-based curve/chart viewer
 │
 └── tracklogs/                   # Sample track files
 ```
